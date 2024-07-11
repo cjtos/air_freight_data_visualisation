@@ -1,0 +1,118 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import plotly.express as px
+
+#data taken from BITRE international airline activity from Jan 2009 to March 2024
+port = pd.read_csv('port_operations.csv')
+port.head(5)
+
+port_year = port[(port['Year'] >= 2009) & (port['Year'] <= 2024)]
+port_year
+port_year.dtypes
+
+port_year['Month'] = pd.to_datetime(port_year['Month'], format='%d/%m/%Y')
+port_year.dtypes
+port_year.head(5)
+
+port_replaced = port_year.fillna(0)
+port_replaced['Country to/from'].unique()
+
+#Mapping countries to continents
+continent_mapping = {
+    'Africa': ['South Africa', 'Mauritius', 'Nigeria', 'Reunion'],
+    'Asia': ['Indonesia', 'Turkey', 'Macau', 'United Arab Emirates', 'Hong Kong (SAR)', 'Malaysia', 'Singapore', 'Thailand', 'China', 'Japan', 'India', 'Vietnam', 'Qatar', 'Philippines', 'Fiji', 'South Korea', 'Taiwan', 'Brunei', 'Korea', 'Sri Lanka', 'Cambodia', 'East Timor', 'Laos', 'Bahrain', 'Kazakhstan', 'Azerbaijan'],
+    'Europe': ['UK', 'Germany', 'Italy', 'France', 'Luxembourg', 'Netherlands'],
+    'North America': ['USA', 'Canada'],
+    'Oceania': ['New Zealand', 'Tahiti', 'Guam', 'Australia', 'Western Samoa', 'Vanuatu', 'Solomon Islands', 'Nauru', 'New Caledonia', 'Papua New Guinea', 'Cook Islands', 'Tonga', 'Palau', 'Kiribati'],
+    'South America': ['Argentina', 'Brazil', 'Chile', 'Peru', 'Uruguay']
+}
+
+def get_continent(country):
+    for continent, countries in continent_mapping.items():
+        if country in countries:
+            return continent
+    return 'Unknown'
+
+#Continent column added to port_replaced
+port_replaced['Continent'] = port_replaced['Country to/from'].apply(get_continent)
+print(port_replaced.isnull().sum())
+
+port_replaced['Total Passengers'] = port_replaced['Passengers In'] + port_replaced['Passengers Out']
+port_replaced['Total Freight'] = port_replaced['Freight In'] + port_replaced['Freight Out']
+port_replaced['Total Mail'] = port_replaced['Mail In'] + port_replaced['Mail Out']
+
+sum_by_country = port_replaced.groupby(['Year', 'Continent']).sum()
+sum_by_country.head(7)
+
+#exclude Asia continent because it is the largest continent
+port_replaced_except_asia_na = port_replaced[port_replaced['Continent'] != 'Asia']
+sum_by_country_ea_na = port_replaced_except_asia_na.groupby(['Year', 'Continent']).sum()
+sum_by_country_ea_na.head(7)
+
+sum_by_country_ea_na = port_replaced_except_asia_na.groupby(['Year', 'Continent']).sum().reset_index().round(2)
+
+#Calculate total passengers by continent
+continent_with_max_passengers = sum_by_country_ea_na.loc[sum_by_country_ea_na['Total Passengers'].idxmax(), 'Continent']
+
+#line graph using px
+fig = px.line(sum_by_country_ea_na, x='Year', y='Total Passengers', color='Continent',
+              labels={'Year': 'Year', 'Total Passengers': 'Total Passengers', 'Continent': 'Continent'},
+              title='Total Yearly Passengers by Continent',
+              hover_name='Continent')
+
+#layout px
+fig.update_layout(
+    xaxis=dict(type='linear'),  # Slider requires numeric values for x-axis
+    xaxis_title='Year',
+    yaxis_title='Total Passengers',
+    hovermode='x',  
+    showlegend=True,
+    legend_title='Continent',
+    title_x=0.5,
+)
+
+#default value = continent with highest total passenger
+default_visible = [False] * len(fig.data)
+max_continent_index = sum_by_country_ea_na['Continent'].tolist().index(continent_with_max_passengers)
+default_visible[max_continent_index] = True
+for i, trace in enumerate(fig.data):
+    trace.visible = default_visible[i]
+
+
+
+#create dropdown box
+buttons = []
+default_checkbox = [True if i == max_continent_index else False for i in range(len(sum_by_country_ea_na['Continent'].unique()))]
+
+for i, continent in enumerate(sum_by_country_ea_na['Continent'].unique()):
+    buttons.append(
+        {
+            'label': continent,
+            'method': 'update',
+            'args': [{'visible': [True if c == continent else False for c in sum_by_country_ea_na['Continent']]}]
+        }
+    )
+
+#default dropdown value to the continent with the highest total passenger
+default_dropdown_index = sum_by_country_ea_na['Continent'].unique().tolist().index(continent_with_max_passengers)    
+    
+fig.update_layout(
+    updatemenus=[
+        {
+            'buttons': buttons,
+            'direction': 'down',
+            'showactive': True,
+            'active': default_dropdown_index,
+            'x': 0.17,
+            'xanchor': 'right',
+            'y': 1.07,
+            'yanchor': 'middle',
+        }
+    ]
+)
+
+fig.show()
+
+
+      
+      
